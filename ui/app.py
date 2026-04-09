@@ -571,7 +571,7 @@ def render_export(result):
     # Generate PDF lazily and cache in session state
     if "pdf_cache" not in st.session_state or st.session_state.get("pdf_cache_url") != result.url:
         try:
-            st.session_state.pdf_cache = generate_pdf(result)
+            st.session_state.pdf_cache = bytes(generate_pdf(result))
             st.session_state.pdf_cache_url = result.url
         except Exception as e:
             st.session_state.pdf_cache = None
