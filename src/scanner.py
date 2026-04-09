@@ -62,6 +62,14 @@ class PrestaShopScanner:
             self.log("error", f"Module detection failed: {e}")
             detected_modules = []
         
+        # Step 2b: Refine version using detected module versions
+        if detected_modules:
+            self.log("info", "Cross-referencing module versions to refine PS version...")
+            refined = self.version_detector.refine_version_from_modules(detected_modules, detected_version)
+            if refined and refined != detected_version:
+                detected_version = refined
+                self.log("success", f"Refined version: PrestaShop {detected_version.version} (via {detected_version.source})")
+        
         # Step 3: Fetch relevant CVEs
         self.log("info", "Phase 3/5: Fetching CVE data from NVD API...")
         
