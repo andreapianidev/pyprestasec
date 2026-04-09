@@ -13,7 +13,7 @@
 
 ---
 
-<img src="docs/screenshot.png" alt="PyPrestaSec Screenshot" width="800">
+<img src="docs/pyprestasec.png" alt="PyPrestaSec - PrestaShop Vulnerability Scanner" width="800">
 
 </div>
 
@@ -29,9 +29,10 @@ PyPrestaSec is an open-source security scanner built specifically for **PrestaSh
 
 | Feature | Description |
 |---------|-------------|
-| 🔍 **Version Detection** | 7 detection methods — meta tags, HTTP headers, JS fingerprints, core file probing, and more |
+| 🔍 **Version Detection** | 11 detection methods — meta tags, HTTP headers, JS fingerprints, asset versioning, jQuery fingerprint, robots.txt, config probing, and more |
 | 🧩 **Module Discovery** | Detects 65+ installed modules via HTML analysis and directory probing, with version extraction |
-| 🚨 **CVE Lookup** | Fetches all known PrestaShop vulnerabilities from the NVD API, matches CVEs to detected modules |
+| � **Version Refinement** | Cross-references detected module versions against known PS release bundles to refine approximate versions (e.g. 1.7.x → 1.7.8.8) |
+| � **CVE Lookup** | Fetches all known PrestaShop vulnerabilities from the NVD API, matches CVEs to detected modules |
 | 🌐 **HTTP Headers** | Checks HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy |
 | 🔐 **SSL/TLS Check** | Validates certificate, protocol version, expiry date, issuer |
 | 🚪 **Admin Panel Detection** | Probes 13 common admin paths to detect exposed login pages |
@@ -119,7 +120,7 @@ Open **[http://localhost:8501](http://localhost:8501)** in your browser. That's 
 pyprestasec/
 ├── src/
 │   ├── scanner.py              # Main scan orchestration
-│   ├── version_detector.py     # 7-method version detection
+│   ├── version_detector.py     # 11-method version detection + module cross-reference
 │   ├── module_detector.py      # Module discovery & version extraction
 │   ├── cve_api.py              # NVD API client with pagination
 │   ├── security_checks.py      # Headers, SSL, admin panel, risk score
@@ -129,7 +130,7 @@ pyprestasec/
 ├── ui/
 │   └── app.py                  # Streamlit web interface
 ├── docs/
-│   └── screenshot.png          # UI screenshot
+│   └── pyprestasec.png        # UI screenshot
 ├── requirements.txt
 ├── .env.example
 ├── LICENSE
@@ -172,13 +173,21 @@ with open("report.pdf", "wb") as f:
 
 ---
 
-## 🤝 Contributing
+## 🤝 Contributing — Contributors Wanted!
 
-Contributions are welcome! Feel free to:
+We're actively looking for contributors to help make PyPrestaSec the **#1 open-source PrestaShop security tool**. Whether you're a security researcher, a PrestaShop developer, or just passionate about open source — **your help is welcome!**
 
-- ⭐ **Star** this repo if you find it useful
-- 🐛 Open an **issue** for bugs or feature requests
-- 🔀 Submit a **pull request** with improvements
+Here's how you can contribute:
+
+- ⭐ **Star** this repo to support the project and help it grow
+- 🐛 **Report bugs** or suggest features via [Issues](https://github.com/andreapianidev/pyprestasec/issues)
+- � **Submit a PR** — bug fixes, new detection methods, UI improvements, anything goes!
+- 🧩 **Expand the module database** — add more PrestaShop modules to the detection and fingerprint lists
+- 🌍 **Translations** — help localize the UI or exported reports
+- 📖 **Documentation** — improve guides, write tutorials, add usage examples
+- � **Security research** — contribute new CVE mappings, version fingerprints, or detection techniques
+
+> **First time contributing?** Look for issues labeled [`good first issue`](https://github.com/andreapianidev/pyprestasec/labels/good%20first%20issue) to get started!
 
 ---
 
