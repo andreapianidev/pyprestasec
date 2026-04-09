@@ -154,10 +154,14 @@ class PrestaShopScanner:
             mod_lower = mod.name.lower().replace("_", "").replace("-", "")
             for cve in cves:
                 desc_lower = cve.description.lower().replace("_", "").replace("-", "")
-                cve_lower = cve.cve_id.lower()
                 if mod_lower in desc_lower or mod.name.lower() in desc_lower:
                     if cve.cve_id not in mod.cve_ids:
                         mod.cve_ids.append(cve.cve_id)
+                        mod.cve_details[cve.cve_id] = {
+                            "description": cve.description,
+                            "severity": cve.severity,
+                            "cvss_score": cve.cvss_score,
+                        }
                         mod.has_known_cves = True
             if mod.has_known_cves:
                 self.log("warning", f"Module '{mod.name}' has {len(mod.cve_ids)} known CVE(s)!")

@@ -19,6 +19,7 @@ class DetectedModule:
     path: str = ""    # URL path where found
     has_known_cves: bool = False
     cve_ids: List[str] = field(default_factory=list)
+    cve_details: dict = field(default_factory=dict)  # {cve_id: {description, severity, cvss_score}}
 
 
 # Common PrestaShop modules to probe (most popular + most attacked)

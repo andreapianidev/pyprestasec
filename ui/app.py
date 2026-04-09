@@ -107,6 +107,8 @@ def init_state():
         "api_key": NVD_API_KEY,
         "logs": [],
         "scan_url": "",
+        "stop_scan": False,
+        "pending_scan": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -218,13 +220,22 @@ def render_scan_form():
     with col1:
         url = st.text_input(
             "🎯 Target URL",
+            value=st.session_state.get("scan_url", ""),
             placeholder="https://www.example-shop.com",
             label_visibility="collapsed",
         )
+
     with col2:
-        scan = st.button("🔍 Scan", type="primary", use_container_width=True,
-                         disabled=st.session_state.is_scanning)
-    return url, scan
+        if st.session_state.is_scanning:
+            stop = st.button("⛔ Stop", type="primary", use_container_width=True)
+            if stop:
+                st.session_state.stop_scan = True
+                st.session_state.is_scanning = False
+                st.rerun()
+            return url, False
+        else:
+            scan = st.button("🔍 Scan", type="primary", use_container_width=True)
+            return url, scan
 
 
 # ─── Perform Scan ─────────────────────────────────────────────────────
@@ -428,7 +439,25 @@ def render_modules(modules):
                     st.markdown(f"**Path:** `{mod.path}`")
                 st.markdown("**Related CVEs:**")
                 for cve_id in mod.cve_ids[:10]:
-                    st.markdown(f"- [`{cve_id}`](https://nvd.nist.gov/vuln/detail/{cve_id})")
+                    detail = mod.cve_details.get(cve_id, {})
+                    desc = detail.get("description", "")
+                    severity = detail.get("severity", "UNKNOWN")
+                    cvss = detail.get("cvss_score")
+                    sev_icon = SEVERITY_ICONS.get(severity, "⚪")
+                    sev_color = SEVERITY_COLORS.get(severity, "#999")
+                    score_str = f" (CVSS {cvss})" if cvss else ""
+
+                    st.markdown(
+                        f'<div style="border-left:3px solid {sev_color}; padding:.4rem .8rem; margin:.4rem 0; '
+                        f'background:rgba(255,255,255,.03); border-radius:0 .3rem .3rem 0;">'
+                        f'<b>{sev_icon} <a href="https://nvd.nist.gov/vuln/detail/{cve_id}" target="_blank" '
+                        f'style="color:#818cf8;">{cve_id}</a></b>'
+                        f' &nbsp; <span style="color:{sev_color}; font-weight:600; font-size:.8rem;">'
+                        f'{severity}{score_str}</span>'
+                        f'<br><span style="color:#aaa; font-size:.82rem;">{desc[:300]}{"..." if len(desc) > 300 else ""}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
     # Safe modules
     if safe_modules:
@@ -612,8 +641,19 @@ def main():
 
     url, scan_clicked = render_scan_form()
 
-    if scan_clicked:
-        perform_scan(url, config)
+    if scan_clicked and not st.session_state.is_scanning:
+        # Set scanning state and save config, then rerun so the Stop button appears
+        st.session_state.is_scanning = True
+        st.session_state.pending_scan = True
+        st.session_state.scan_url = url
+        st.session_state.pending_config = config
+        st.rerun()
+
+    # If we have a pending scan (after rerun), execute it now with Stop button visible
+    if st.session_state.get("pending_scan"):
+        st.session_state.pending_scan = False
+        saved_config = st.session_state.get("pending_config", config)
+        perform_scan(st.session_state.scan_url, saved_config)
 
     # Live log console (always visible when there are logs)
     if st.session_state.logs:
