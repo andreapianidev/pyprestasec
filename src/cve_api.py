@@ -168,8 +168,10 @@ class NVDAPIClient:
             refs = cve_data.get('references', [])
             references = [ref.get('url', '') for ref in refs if ref.get('url')]
             
-            # Try to extract affected versions from description
-            affected_versions = self._extract_affected_versions(description)
+            # Extract affected versions from CPE data + description
+            affected_versions = self._extract_cpe_version_ranges(cve_data)
+            if not affected_versions:
+                affected_versions = self._extract_affected_versions(description)
             
             vuln = CVEVulnerability(
                 cve_id=cve_id,
@@ -186,75 +188,159 @@ class NVDAPIClient:
         
         return vulnerabilities
     
+    def _extract_cpe_version_ranges(self, cve_data: dict) -> List[str]:
+        """Extract precise version ranges from NVD CPE configurations.
+        
+        Returns ranges in normalized format:
+          - 'before X.X.X'          (versionEndExcluding)
+          - 'through X.X.X'         (versionEndIncluding)
+          - 'from X.X.X before Y'   (start + end)
+        """
+        ranges = []
+        configurations = cve_data.get('configurations', [])
+        
+        for config in configurations:
+            for node in config.get('nodes', []):
+                for match in node.get('cpeMatch', []):
+                    if not match.get('vulnerable', False):
+                        continue
+                    cpe = match.get('criteria', '')
+                    # Only care about prestashop CPEs
+                    if 'prestashop' not in cpe.lower():
+                        continue
+                    
+                    start_inc = match.get('versionStartIncluding', '')
+                    start_exc = match.get('versionStartExcluding', '')
+                    end_inc = match.get('versionEndIncluding', '')
+                    end_exc = match.get('versionEndExcluding', '')
+                    
+                    if end_exc:
+                        if start_inc:
+                            ranges.append(f"{start_inc} through before {end_exc}")
+                        else:
+                            ranges.append(f"before {end_exc}")
+                    elif end_inc:
+                        if start_inc:
+                            ranges.append(f"{start_inc} through {end_inc}")
+                        else:
+                            ranges.append(f"through {end_inc}")
+                    elif start_inc:
+                        ranges.append(f"from {start_inc}")
+                    else:
+                        # Extract version from CPE URI  cpe:2.3:a:prestashop:prestashop:X.X.X
+                        parts = cpe.split(':')
+                        if len(parts) >= 6 and parts[5] not in ('*', '-', ''):
+                            ranges.append(parts[5])
+        
+        return ranges
+
     def _extract_affected_versions(self, description: str) -> List[str]:
-        """Extract affected version info from CVE description"""
+        """Extract affected version info from CVE description (fallback)"""
         import re
         versions = []
         
-        # Common patterns
+        # Keep prefix (before/through) so check_version_vulnerable can parse them
         patterns = [
-            r'version[s]?\s+([\d.]+(?:\s*through\s*[\d.]+)?)',
-            r'before\s+([\d.]+)',
-            r'([\d.]+)\s+and\s+earlier',
-            r'([\d.]+)\s+and\s+prior',
-            r'<=?\s*([\d.]+)',
+            (r'before\s+([\d.]+)', 'before'),
+            (r'prior\s+to\s+([\d.]+)', 'before'),
+            (r'([\d.]+)\s+and\s+earlier', 'through'),
+            (r'([\d.]+)\s+and\s+prior', 'through'),
+            (r'<=\s*([\d.]+)', 'through'),
+            (r'<\s*([\d.]+)', 'before'),
+            (r'version[s]?\s+([\d.]+)\s+through\s+([\d.]+)', 'range'),
         ]
         
-        for pattern in patterns:
+        for pattern, kind in patterns:
             matches = re.findall(pattern, description, re.IGNORECASE)
-            versions.extend(matches)
+            for m in matches:
+                if kind == 'range':
+                    versions.append(f"{m[0]} through {m[1]}")
+                elif kind == 'before':
+                    versions.append(f"before {m}")
+                elif kind == 'through':
+                    versions.append(f"through {m}")
         
-        return list(set(versions))  # Remove duplicates
+        return list(set(versions))
     
     def check_version_vulnerable(
         self, 
         detected_version: str, 
         cve: CVEVulnerability
     ) -> bool:
-        """
-        Check if a detected version is affected by a CVE
-        This is a simplified check - real implementation would need proper version comparison
-        """
+        """Check if a detected version is affected by a CVE using version ranges."""
         from packaging import version as pkg_version
+        import re
         
-        # Normalize version
         try:
             detected = pkg_version.parse(detected_version)
         except Exception:
             return False
         
-        # Check if version appears in affected versions
         for affected in cve.affected_versions:
             try:
-                # Handle ranges like "1.7.0 through 1.7.8"
-                if 'through' in affected.lower():
-                    parts = affected.lower().split('through')
-                    if len(parts) == 2:
-                        start = pkg_version.parse(parts[0].strip())
-                        end = pkg_version.parse(parts[1].strip())
-                        if start <= detected <= end:
-                            return True
+                a = affected.lower().strip()
                 
-                # Handle "before X.X.X"
-                elif affected.lower().startswith('before'):
-                    limit = pkg_version.parse(affected[6:].strip())
-                    if detected < limit:
+                # "X.X.X through before Y.Y.Y" (startIncluding + endExcluding)
+                m = re.match(r'([\d.]+)\s+through\s+before\s+([\d.]+)', a)
+                if m:
+                    start = pkg_version.parse(m.group(1))
+                    end = pkg_version.parse(m.group(2))
+                    if start <= detected < end:
                         return True
+                    continue
                 
-                # Handle exact version or simple comparison
-                else:
-                    affected_ver = pkg_version.parse(affected.strip())
-                    if detected == affected_ver:
+                # "X.X.X through Y.Y.Y" (startIncluding + endIncluding)
+                m = re.match(r'([\d.]+)\s+through\s+([\d.]+)', a)
+                if m:
+                    start = pkg_version.parse(m.group(1))
+                    end = pkg_version.parse(m.group(2))
+                    if start <= detected <= end:
                         return True
-                        
+                    continue
+                
+                # "through Y.Y.Y" (endIncluding, no start)
+                m = re.match(r'through\s+([\d.]+)', a)
+                if m:
+                    end = pkg_version.parse(m.group(1))
+                    if detected <= end:
+                        return True
+                    continue
+                
+                # "before Y.Y.Y" (endExcluding)
+                m = re.match(r'before\s+([\d.]+)', a)
+                if m:
+                    end = pkg_version.parse(m.group(1))
+                    if detected < end:
+                        return True
+                    continue
+                
+                # "from X.X.X" (startIncluding, no end = all versions after)
+                m = re.match(r'from\s+([\d.]+)', a)
+                if m:
+                    start = pkg_version.parse(m.group(1))
+                    if detected >= start:
+                        return True
+                    continue
+                
+                # Exact version match
+                affected_ver = pkg_version.parse(a)
+                if detected == affected_ver:
+                    return True
+                    
             except Exception:
                 continue
         
-        # If no specific version info, assume it might be affected
-        # (conservative approach for security)
+        # No version ranges found — check description for version mention
         if not cve.affected_versions:
-            # Check if description mentions the version
-            if detected_version in cve.description:
+            desc = cve.description.lower()
+            if detected_version in desc or f"prestashop {detected_version}" in desc:
                 return True
+            # Also match "before X.X.X" in description directly
+            for m in re.finditer(r'before\s+([\d.]+)', desc):
+                try:
+                    if detected < pkg_version.parse(m.group(1)):
+                        return True
+                except Exception:
+                    pass
         
         return False
