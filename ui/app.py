@@ -186,8 +186,23 @@ def render_sidebar():
         # ── Kill button ──
         st.markdown('<div class="kill-btn">', unsafe_allow_html=True)
         if st.button("🛑 Stop Server & Quit", use_container_width=True):
-            st.warning("Shutting down...")
-            os.kill(os.getpid(), signal.SIGTERM)
+            st.warning("Shutting down all Streamlit processes...")
+            import subprocess
+            # Kill all Streamlit processes on port 8501 (robust cleanup)
+            try:
+                subprocess.run(
+                    ["pkill", "-f", "streamlit.*app.py"],
+                    timeout=5, capture_output=True
+                )
+            except Exception:
+                pass
+            # Fallback: kill own process group to catch all children
+            try:
+                os.killpg(os.getpgid(os.getpid()), signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                pass
+            # Last resort: kill self
+            os.kill(os.getpid(), signal.SIGKILL)
         st.markdown('</div>', unsafe_allow_html=True)
 
         st.divider()
