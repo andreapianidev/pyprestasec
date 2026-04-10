@@ -154,7 +154,12 @@ class VersionDetector:
         parts = version.split('.')
         try:
             major = int(parts[0])
-            return major in (1, 8, 9)  # Known PrestaShop major versions
+            if major in (8, 9):
+                return True
+            if major == 1 and len(parts) >= 2:
+                minor = int(parts[1])
+                return minor >= 4  # PrestaShop 1.4+ are the only realistic versions
+            return False
         except (ValueError, IndexError):
             return False
     
@@ -191,7 +196,6 @@ class VersionDetector:
         ps_patterns = [
             r'prestashop_version\s*[=:]\s*["\']?' + self.VERSION_PATTERN,
             r'ps_version\s*[=:]\s*["\']?' + self.VERSION_PATTERN,
-            r'"version"\s*:\s*"' + self.VERSION_PATTERN + r'"',
         ]
         for pattern in ps_patterns:
             match = re.search(pattern, html_text, re.IGNORECASE)
